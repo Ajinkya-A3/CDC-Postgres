@@ -3,10 +3,12 @@ services:
   source-postgres:
     image: postgres:16
     container_name: source-postgres
+
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: migration
+
     command:
       - postgres
       - -c
@@ -15,63 +17,90 @@ services:
       - max_wal_senders=10
       - -c
       - max_replication_slots=10
+
     volumes:
       - source-data:/var/lib/postgresql/data
       - ./source-init/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
     ports:
       - "5433:5432"
+
     healthcheck:
       # -h 127.0.0.1 forces TCP, so the temporary init-time server
       # (Unix socket only) cannot satisfy the check.
-      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d migration"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -h 127.0.0.1 -U postgres -d migration"
+        ]
       interval: 5s
       timeout: 5s
       retries: 20
+
     networks:
       - cdc
+
 
   target-postgres:
     image: postgres:16
     container_name: target-postgres
+
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: migration
+
     volumes:
       - target-data:/var/lib/postgresql/data
       - ./target-init/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
     ports:
+      # Host port 5434 -> target PostgreSQL port 5432
       - "5434:5432"
+
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d migration"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -h 127.0.0.1 -U postgres -d migration"
+        ]
       interval: 5s
       timeout: 5s
       retries: 20
+
     networks:
       - cdc
+
 
   debezium:
     build:
       context: ./debezium
+
     container_name: debezium
+
     depends_on:
       source-postgres:
         condition: service_healthy
       target-postgres:
         condition: service_healthy
+
     volumes:
       - ./debezium/application.properties:/debezium/config/application.properties:ro
       - debezium-offsets:/debezium/data
+
     ports:
       - "8080:8080"
     networks:
       - cdc
+
 
 volumes:
   source-data:
   target-data:
   debezium-offsets:
 
+
 networks:
   cdc:
-    name: debezium-cdc
+    name: cdc
+    driver: bridge
