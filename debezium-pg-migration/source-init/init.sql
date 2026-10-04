@@ -6,22 +6,22 @@ GRANT CONNECT ON DATABASE migration TO debezium;
 GRANT USAGE ON SCHEMA public TO debezium;
 
 CREATE TABLE public.customers (
-    id BIGINT PRIMARY KEY,
+    id UUID PRIMARY KEY,
     name TEXT NOT NULL,
     email TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE public.products (
-    product_id BIGINT PRIMARY KEY,
+    product_id UUID PRIMARY KEY,
     name TEXT NOT NULL,
     price NUMERIC(12,2) NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE public.orders (
-    order_id BIGINT PRIMARY KEY,
-    customer_id BIGINT NOT NULL,
+    order_id UUID PRIMARY KEY,
+    customer_id UUID NOT NULL,
     total NUMERIC(12,2) NOT NULL,
     status TEXT NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -29,35 +29,36 @@ CREATE TABLE public.orders (
 
 -- Composite primary key
 CREATE TABLE public.order_items (
-    order_id BIGINT NOT NULL,
-    product_id BIGINT NOT NULL,
+    order_id UUID NOT NULL,
+    product_id UUID NOT NULL,
     quantity INTEGER NOT NULL,
     price NUMERIC(12,2) NOT NULL,
     PRIMARY KEY (order_id, product_id)
 );
 
 -- Sentinel table used by scripts/cutover.sh
+-- Stays BIGINT on purpose: scripts/cutover.sh writes an epoch number here, not an entity id.
 CREATE TABLE public.cutover_marker (
     id BIGINT PRIMARY KEY,
     note TEXT
 );
 
 INSERT INTO public.customers (id, name, email) VALUES
-    (1, 'Ajinkya', 'ajinkya@example.com'),
-    (2, 'Atlas', 'atlas@example.com');
+    ('01900000-0000-7000-8000-000000000001', 'Ajinkya', 'ajinkya@example.com'),
+    ('01900000-0000-7000-8000-000000000002', 'Atlas', 'atlas@example.com');
 
 INSERT INTO public.products (product_id, name, price) VALUES
-    (101, 'Laptop', 75000.00),
-    (102, 'Keyboard', 2500.00);
+    ('01900000-0000-7000-8000-000000000101', 'Laptop', 75000.00),
+    ('01900000-0000-7000-8000-000000000102', 'Keyboard', 2500.00);
 
 INSERT INTO public.orders (order_id, customer_id, total, status) VALUES
-    (1001, 1, 77500.00, 'PAID'),
-    (1002, 2, 2500.00, 'PENDING');
+    ('01900000-0000-7000-8000-000000001001', '01900000-0000-7000-8000-000000000001', 77500.00, 'PAID'),
+    ('01900000-0000-7000-8000-000000001002', '01900000-0000-7000-8000-000000000002', 2500.00, 'PENDING');
 
 INSERT INTO public.order_items (order_id, product_id, quantity, price) VALUES
-    (1001, 101, 1, 75000.00),
-    (1001, 102, 1, 2500.00),
-    (1002, 102, 1, 2500.00);
+    ('01900000-0000-7000-8000-000000001001', '01900000-0000-7000-8000-000000000101', 1, 75000.00),
+    ('01900000-0000-7000-8000-000000001001', '01900000-0000-7000-8000-000000000102', 1, 2500.00),
+    ('01900000-0000-7000-8000-000000001002', '01900000-0000-7000-8000-000000000102', 1, 2500.00);
 
 -- Snapshot permissions (granted AFTER the tables exist)
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO debezium;
