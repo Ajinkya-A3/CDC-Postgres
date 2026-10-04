@@ -94,6 +94,39 @@ services:
       - cdc
 
 
+  # Simulated user traffic: continuous UUIDv7 inserts into the SOURCE database.
+  # Not started by a plain `docker compose up`; start it with:
+  #   docker compose --profile sim up -d --build simulator
+  simulator:
+    build:
+      context: ./usage-simultaion
+
+    container_name: simulator
+    profiles: ["sim"]
+
+    depends_on:
+      source-postgres:
+        condition: service_healthy
+      debezium:
+        condition: service_started
+
+    environment:
+      # --- where to write (standard libpq variables) ---
+      PGHOST: source-postgres      # compose service name, resolved on the "cdc" network
+      PGPORT: "5432"               # container port, NOT the published 5433
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: migration
+      # --- how much load ---
+      SIM_RATE: "5"                # transactions per second
+      SIM_DURATION: "0"            # seconds to run; 0 = forever
+
+    restart: unless-stopped
+
+    networks:
+      - cdc
+
+
 volumes:
   source-data:
   target-data:
