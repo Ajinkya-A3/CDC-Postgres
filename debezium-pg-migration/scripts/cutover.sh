@@ -11,7 +11,8 @@ src_admin() { docker exec -i -e PGOPTIONS="-c default_transaction_read_only=off"
               source-postgres psql -U postgres -d migration -v ON_ERROR_STOP=1 -At "$@"; }
 tgt() { docker exec -i target-postgres psql -U postgres -d migration -v ON_ERROR_STOP=1 -At "$@"; }
 
-TABLES="customers:id products:product_id orders:order_id order_items:order_id,product_id events:event_id,created_at cutover_marker:id"
+# cutover_marker.id stays BIGINT (epoch seconds); every other id is a UUID. Both sort fine for the hash.
+TABLES="customers:id products:product_id orders:order_id order_items:order_id,product_id cutover_marker:id"
 
 # count + md5 of full row content per table
 fp() {
@@ -43,14 +44,18 @@ if [ "${1:-}" != "--yes" ]; then
   [ "$ans" == "yes" ] || abort "not confirmed"
 fi
 
-echo "== 2. write sentinel row =="
-SENT=$(date +%s)
-src -c "INSERT INTO cutover_marker(id,note) VALUES ($SENT,'sentinel')"
-echo "sentinel id: $SENT"
-
-echo "== 3. freeze source (read-only for new sessions, drop existing sessions) =="
+echo "== 2. freeze source (read-only for new sessions, drop existing sessions) =="
 src_admin -c "ALTER DATABASE migration SET default_transaction_read_only = on"
 echo "terminated sessions: $(src_admin -c "SELECT count(pg_terminate_backend(pid)) FROM pg_stat_activity WHERE datname='migration' AND backend_type='client backend' AND usename <> 'debezium' AND pid <> pg_backend_pid()")"
+
+# The sentinel is written AFTER the freeze, through an admin session (the freeze blocks normal ones).
+# The change stream is ordered, so once it reaches the target, every earlier change is there too.
+# Writing it before the freeze would let an application that is still running commit rows between
+# the sentinel and the freeze, and those rows could reach the target after it.
+echo "== 3. write sentinel row (admin session) =="
+SENT=$(date +%s)
+src_admin -c "INSERT INTO cutover_marker(id,note) VALUES ($SENT,'sentinel')"
+echo "sentinel id: $SENT"
 
 echo "== 4. wait for sentinel on target =="
 ok=0
